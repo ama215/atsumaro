@@ -2,19 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { dateRange, shiftMonth } from "@/lib/calendar";
 
 type Room = { id: string; name: string; code: string; start_date: string; end_date: string; created_at: string };
 type Member = { id: string; display_name: string; user_id: string; joined_at: string };
 type ResponseRow = { member_id: string; date: string; answer: "○" | "△" | "×" };
 
 const fmt = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
-const dateRange = (start: string, end: string) => {
-  const out: string[] = [];
-  const d = new Date(`${start}T00:00:00`);
-  const last = new Date(`${end}T00:00:00`);
-  while (d <= last && out.length < 125) { out.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
-  return out;
-};
 
 export default function Home() {
   const [ready, setReady] = useState(false);
@@ -92,7 +86,7 @@ export default function Home() {
       .on("postgres_changes", { event: "*", schema: "public", table: "room_members", filter: `room_id=eq.${room.id}` }, () => loadRoom(room.id))
       .on("postgres_changes", { event: "*", schema: "public", table: "availability", filter: `room_id=eq.${room.id}` }, () => loadRoom(room.id))
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase?.removeChannel(channel); };
   }, [room?.id]);
 
   const dates = useMemo(() => room ? dateRange(room.start_date, room.end_date) : [], [room]);
@@ -135,7 +129,7 @@ export default function Home() {
       <div className="roomhead"><div><p className="eyebrow">ROOM</p><h1>{room.name}</h1><p>{fmt(room.start_date)} 〜 {fmt(room.end_date)}</p></div><div className="invite"><span>招待コード</span><strong>{room.code}</strong><button onClick={()=>navigator.clipboard.writeText(`${location.origin}/?code=${room.code}`)}>招待リンクをコピー</button><button onClick={()=>{const u=`https://line.me/R/msg/text/?${encodeURIComponent(`あつまろに参加してね！\n${location.origin}/?code=${room.code}`)}`;location.href=u;}}>LINEで共有</button></div></div>
       <div className="summary"><h2>全員○の日 <strong>{allAvailable.length}日</strong></h2>{allAvailable.length ? <div className="availablelist">{allAvailable.map(d=><span key={d}>{fmt(d)}</span>)}</div> : <p>現在、全員○の日はありません。</p>}</div>
       <div className="calendar panel">
-        <div className="calhead"><button onClick={()=>setMonth(m=>{const d=new Date(`${m}-01T00:00:00`);d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7)})}>‹</button><h2>{monthLabel}</h2><button onClick={()=>setMonth(m=>{const d=new Date(`${m}-01T00:00:00`);d.setMonth(d.getMonth()+1);return d.toISOString().slice(0,7)})}>›</button></div>
+        <div className="calhead"><button aria-label="前の月" onClick={()=>setMonth(m=>shiftMonth(m,-1))}>‹</button><h2>{monthLabel}</h2><button aria-label="次の月" onClick={()=>setMonth(m=>shiftMonth(m,1))}>›</button></div>
         <div className="days">{["日","月","火","水","木","金","土"].map(x=><b key={x}>{x}</b>)}</div>
         <div className="grid">{(() => { const first = new Date(`${month}-01T00:00:00`).getDay(); const count = new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate(); return [...Array(first).fill(null),...Array(count).fill(0).map((_,i)=>`${month}-${String(i+1).padStart(2,"0")}`)].map((d,i)=>{ if(!d || !dates.includes(d)) return <div className="emptyday" key={`e${i}`}/>; const yes=responses.filter(a=>a.date===d&&a.answer==="○").length; const mine=responses.find(a=>a.date===d&&a.member_id===myMemberId)?.answer; return <button key={d} className={`day ${allAvailable.includes(d)?"everyone":""}`} onClick={()=>setFilter("all")}><b>{Number(d.slice(-2))}</b><span>{allAvailable.includes(d)?"○":yes>0?`${yes}/${members.length}○`:"—"}</span><small>{mine || "未回答"}</small></button>; }); })()}</div>
       </div>
