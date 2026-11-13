@@ -40,7 +40,7 @@ export default function Home() {
     init();
   }, []);
 
-  const loadRoom = async (roomId: string) => {
+  const loadRoom = async (roomId: string, resetMonth = false) => {
     if (!supabase) return;
     const { data: r } = await supabase.from("rooms").select("*").eq("id", roomId).single();
     if (!r) return;
@@ -54,7 +54,7 @@ export default function Home() {
     const { data: { user } } = await supabase.auth.getUser();
     const mine = (m || []).find((x: Member) => x.user_id === user?.id);
     setMyMemberId(mine?.id || "");
-    setMonth(r.start_date.slice(0, 7));
+    if (resetMonth) setMonth(r.start_date.slice(0, 7));
     setView("room");
     history.replaceState(null, "", `?code=${r.code}`);
   };
@@ -67,7 +67,7 @@ export default function Home() {
     const { data, error } = await supabase.rpc("create_room", { p_name: roomName.trim(), p_start: start, p_end: end, p_display_name: name.trim() });
     setBusy(false);
     if (error) return setMessage(error.message);
-    await loadRoom(data.room_id);
+    await loadRoom(data.room_id, true);
   };
 
   const joinRoom = async () => {
@@ -77,7 +77,7 @@ export default function Home() {
     const { data, error } = await supabase.rpc("join_room", { p_code: code.trim().toUpperCase(), p_display_name: name.trim() });
     setBusy(false);
     if (error) return setMessage(error.message);
-    await loadRoom(data.room_id);
+    await loadRoom(data.room_id, true);
   };
 
   useEffect(() => {
@@ -130,8 +130,23 @@ export default function Home() {
       <div className="summary"><h2>全員○の日 <strong>{allAvailable.length}日</strong></h2>{allAvailable.length ? <div className="availablelist">{allAvailable.map(d=><span key={d}>{fmt(d)}</span>)}</div> : <p>現在、全員○の日はありません。</p>}</div>
       <div className="calendar panel">
         <div className="calhead"><button aria-label="前の月" onClick={()=>setMonth(m=>shiftMonth(m,-1))}>‹</button><h2>{monthLabel}</h2><button aria-label="次の月" onClick={()=>setMonth(m=>shiftMonth(m,1))}>›</button></div>
+        <p className="muted calendar-help">各日の○・△・×で、あなたの予定を入力できます。同じ回答をもう一度選ぶと解除されます。</p>
         <div className="days">{["日","月","火","水","木","金","土"].map(x=><b key={x}>{x}</b>)}</div>
-        <div className="grid">{(() => { const first = new Date(`${month}-01T00:00:00`).getDay(); const count = new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate(); return [...Array(first).fill(null),...Array(count).fill(0).map((_,i)=>`${month}-${String(i+1).padStart(2,"0")}`)].map((d,i)=>{ if(!d || !dates.includes(d)) return <div className="emptyday" key={`e${i}`}/>; const yes=responses.filter(a=>a.date===d&&a.answer==="○").length; const mine=responses.find(a=>a.date===d&&a.member_id===myMemberId)?.answer; return <button key={d} className={`day ${allAvailable.includes(d)?"everyone":""}`} onClick={()=>setFilter("all")}><b>{Number(d.slice(-2))}</b><span>{allAvailable.includes(d)?"○":yes>0?`${yes}/${members.length}○`:"—"}</span><small>{mine || "未回答"}</small></button>; }); })()}</div>
+        <div className="grid">{(() => { const first = new Date(`${month}-01T00:00:00`).getDay(); const count = new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate(); return [...Array(first).fill(null),...Array(count).fill(0).map((_,i)=>`${month}-${String(i+1).padStart(2,"0")}`)].map((d,i)=>{ if(!d || !dates.includes(d)) return <div className="emptyday" key={`e${i}`}/>; const yes=responses.filter(a=>a.date===d&&a.answer==="○").length; const mine=responses.find(a=>a.date===d&&a.member_id===myMemberId)?.answer; return <div key={d} className={`day ${allAvailable.includes(d)?"everyone":""}`}>
+            <b>{Number(d.slice(-2))}</b>
+            <span>{allAvailable.includes(d)?"○":yes>0?`${yes}/${members.length}○`:"—"}</span>
+            <div className="choices calendar-choices" role="group" aria-label={`${fmt(d)}のあなたの予定`}>
+              {(["○", "△", "×"] as const).map(answer => <button
+                type="button"
+                key={answer}
+                className={`choice ${mine===answer?"selected "+(answer==="○"?"yes":answer==="△"?"maybe":"no"):""}`}
+                aria-label={`${fmt(d)}：${answer==="○"?"参加できる":answer==="△"?"未定":"参加できない"}`}
+                aria-pressed={mine===answer}
+                disabled={!myMemberId}
+                onClick={()=>changeAnswer(d,answer)}
+              >{answer}</button>)}
+            </div>
+          </div>; }); })()}</div>
       </div>
       <div className="panel response">
         <h2>メンバーの予定を入力</h2><p className="muted">○・△・×を選択すると、全員の画面に反映されます。</p>
